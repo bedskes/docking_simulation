@@ -1,5 +1,5 @@
 import numpy as np
-from gym_docking.utils.rotations import *
+from rotations import *
 
 global rho
 rho = 1005 # Density of sea water, kg/m^3
