@@ -57,8 +57,10 @@ class Docking(gym.Env):
     def step(self, action):
         # Simulate dynamics one time-step and save action and state
         action = np.clip(action, self.action_space.low, self.action_space.high)
+        action_converted = np.multiply(action, [self.max_prop_vel, self.max_rudder_angle])
         # TODO action comes out normalized, need to convert to actual state space
-        self.vessel.step_time(self.t_step, action[0], action[1], self.wave, self.current)
+        self.vessel.step_time(self.t_step, action_converted[0],
+                              action_converted[1], self.wave, self.current)
         vessel_state = np.hstack([self.vessel.pos, self.vessel.v, self.vessel.theta, self.vessel.w])
         self.past_states.append(np.copy(vessel_state))
         self.past_actions.append(action)
@@ -83,25 +85,27 @@ class Docking(gym.Env):
         head_error = self.path.angle_to(self.vessel.pos[:2])
 
         obs = np.zeros(self.nobservations)
-        obs[0] = action[0] #propeller velocity,
-        obs[1] = action[1] #rudder angle,
-        obs[2:4] = self.vessel.v[:2 ]#velocity (x, y),
-        obs[4] = self.vessel.theta[2] #yaw
-        obs[5] = self.vessel.w[2] #yaw rate,
-        obs[6] = vel_error #velocity error,
-        obs[7] = track_error #cross track error,
-        obs[8] = head_error#heading error,
-        obs[9] = self.wave.A#wave amplitude,
-        obs[10] = self.wave.theta #wave direction
+        obs[0] = action[0] # propeller velocity (already normalized)
+        obs[1] = action[1] # rudder angle (already normalized)
+        obs[2:4] = self.vessel.v[:2 ]/self.max_velocity #velocity (x, y),
+        obs[4] = self.vessel.theta[2]/sefl.max_yaw # yaw
+        obs[5] = self.vessel.w[2]/self.max_yaw_rate # yaw rate,
+        obs[6] = vel_error/self.max_velocity_error # velocity error,
+        obs[7] = track_error/self.max_track_error # cross track error,
+        obs[8] = head_error/self.max_heading_error # heading error,
+        obs[9] = self.wave.A/self.max_wave_amp # wave amplitude,
+        obs[10] = self.wave.theta/self.max_wave_direction # wave direction
         return obs
 
     def step_reward(self, obs, action):
-        #placeholder until reward function is determined
         done = False
+        d_action = (action - self.past_actions[-1])/(self.t_step)
         reward = 0
-        reward += obs[6] * -0.05
-        reward += obs[7] * -0.05
-        reward += obs[8] * -0.05
+        reward += (d_action[0]/self.max_prop_vel_change)**2*self.r_prop_change
+        reward += (d_action[1]/self.max_rudder_angle_change)**2*self.r_rudder_change
+        reward += obs[6]**2 * self.r_vel_error
+        reward += obs[7]**2 * self.r_track_error
+        reward += obs[8]**2 * self.r_heading_error
         return done, reward
 
     def reset(self):
